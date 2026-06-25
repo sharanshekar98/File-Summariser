@@ -1,5 +1,3 @@
-streamlit
-google-genai
 import streamlit as st
 import os
 import zipfile
