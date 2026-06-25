@@ -1,5 +1,5 @@
-import streamlit as st
 import os
+import streamlit as st
 import zipfile
 import xml.etree.ElementTree as ET
 import time
@@ -81,14 +81,27 @@ def extract_text_from_docx(file_io):
     except Exception as e:
         return f"Error extracting Word text: {str(e)}"
 
-# 2. Initialize the official Gemini Client directly with your key
+# 2. Initialize the official Gemini Client using Streamlit Cloud Secrets
 try:
-    # =========================================================================
-    # 🔑 PASTE YOUR KEY HERE 🔑
-    # Replace the text inside the quotes below with your working AIzaSy... key!
-    # =========================================================================
-    MY_API_KEY = "API_KEY"
-    
+    # Check if key exists inside Streamlit Cloud Advanced Settings
+    if "GEMINI_API_KEY" in st.secrets:
+        MY_API_KEY = st.secrets["GEMINI_API_KEY"]
+    else:
+        # Fallback for local testing environmental variables
+        MY_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+    # If no key found in secrets, fallback to hardcoded string for immediate check
+    if not MY_API_KEY or MY_API_KEY == "PASTE_YOUR_KEY_HERE":
+        # =========================================================================
+        # 🔑 OPTIONAL LOCAL KEY PASTE 🔑
+        # If testing locally, you can temporarily swap out the string placeholder below.
+        # =========================================================================
+        MY_API_KEY = "PASTE_YOUR_KEY_HERE"
+
+    if not MY_API_KEY or MY_API_KEY == "PASTE_YOUR_KEY_HERE":
+        st.error("🔑 **API Key Missing!** Please add your `GEMINI_API_KEY` inside your Streamlit Cloud Workspace secrets dashboard.")
+        st.stop()
+        
     client = genai.Client(api_key=MY_API_KEY)
 except Exception as e:
     st.error(f"Failed to initialize GenAI Client: {e}")
