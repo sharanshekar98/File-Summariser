@@ -81,36 +81,16 @@ def extract_text_from_docx(file_io):
     except Exception as e:
         return f"Error extracting Word text: {str(e)}"
 
-# 2. Initialize the official Gemini Client using Streamlit Cloud Secrets
-try:
-    # Check if key exists inside Streamlit Cloud Advanced Settings
-    if "GEMINI_API_KEY" in st.secrets:
-        MY_API_KEY = st.secrets["GEMINI_API_KEY"]
-    else:
-        # Fallback for local testing environmental variables
-        MY_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-
-    # If no key found in secrets, fallback to hardcoded string for immediate check
-    if not MY_API_KEY or MY_API_KEY == "PASTE_YOUR_KEY_HERE":
-        # =========================================================================
-        # 🔑 OPTIONAL LOCAL KEY PASTE 🔑
-        # If testing locally, you can temporarily swap out the string placeholder below.
-        # =========================================================================
-        MY_API_KEY = "PASTE_YOUR_KEY_HERE"
-
-    if not MY_API_KEY or MY_API_KEY == "PASTE_YOUR_KEY_HERE":
-        st.error("🔑 **API Key Missing!** Please add your `GEMINI_API_KEY` inside your Streamlit Cloud Workspace secrets dashboard.")
-        st.stop()
-        
-    client = genai.Client(api_key=MY_API_KEY)
-except Exception as e:
-    st.error(f"Failed to initialize GenAI Client: {e}")
-    st.stop()
-
 # 3. UI Layout
 st.title("✨ AI File Insight Studio")
 st.markdown("Upload a document, image, or data file to instantly extract its key details and get a smart AI summary.")
 st.write("---")
+
+# 🔑 Dynamic Sidebar API Key Input
+with st.sidebar:
+    st.header("🔑 Authentication")
+    api_key_input = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
+    st.markdown("[Get a free key from Google AI Studio](https://aistudio.google.com/)")
 
 # File Uploader Widget
 uploaded_file = st.file_uploader(
@@ -136,55 +116,40 @@ if uploaded_file is not None:
 
     # Action Button
     if st.button("Generate AI Insights 🚀"):
-        with st.spinner("Analyzing file content with Gemini... Please wait."):
-            try:
-                # Construct the prompt instructions
-                base_prompt = "You are an expert data and document analyst. Carefully study the attached file details and content. Provide a comprehensive summary, including key themes, important details, and a structural overview."
-                if user_prompt:
-                    base_prompt += f"\n\nUser specific request: {user_prompt}"
+        # Check if the user entered an API key in the sidebar
+        if not api_key_input:
+            st.error("Please enter your Gemini API Key in the left sidebar first!")
+        else:
+            with st.spinner("Analyzing file content with Gemini... Please wait."):
+                try:
+                    # Initialize client dynamically with the provided input key
+                    client = genai.Client(api_key=api_key_input)
 
-                # ROUTING BY FILE TYPE
-                if uploaded_file.name.endswith('.docx'):
-                    docx_text = extract_text_from_docx(uploaded_file)
-                    contents_payload = [
-                        f"Document Content from Word File ({uploaded_file.name}):\n\n{docx_text}",
-                        base_prompt
-                    ]
-                else:
-                    file_bytes = uploaded_file.read()
-                    file_mime = uploaded_file.type
-                    
-                    file_part = types.Part.from_bytes(
-                        data=file_bytes,
-                        mime_type=file_mime
-                    )
-                    contents_payload = [file_part, base_prompt]
+                    # Construct the prompt instructions
+                    base_prompt = "You are an expert data and document analyst. Carefully study the attached file details and content. Provide a comprehensive summary, including key themes, important details, and a structural overview."
+                    if user_prompt:
+                        base_prompt += f"\n\nUser specific request: {user_prompt}"
 
-                # Robust request runner with an automatic 3-pass retry for 503 limits
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        response = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=contents_payload
-                        )
-                        # If successful, render output styling and exit the retry cycle
-                        st.markdown("### 📊 AI Analysis Summary")
-                        st.markdown(f'<div class="insight-box">{response.text}</div>', unsafe_allow_html=True)
-                        break
+                    # ROUTING BY FILE TYPE
+                    if uploaded_file.name.endswith('.docx'):
+                        docx_text = extract_text_from_docx(uploaded_file)
+                        contents_payload = [
+                            f"Document Content from Word File ({uploaded_file.name}):\n\n{docx_text}",
+                            base_prompt
+                        ]
+                    else:
+                        file_bytes = uploaded_file.read()
+                        file_mime = uploaded_file.type
                         
-                    except Exception as e:
-                        # Handle temporary server load (503) gracefully
-                        if "503" in str(e) and attempt < max_retries - 1:
-                            st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying in 3 seconds...")
-                            time.sleep(3)
-                        else:
-                            # Throw error if retries are exhausted or it's a completely different issue
-                            st.error(f"An error occurred during AI processing: {e}")
-                            break
+                        file_part = types.Part.from_bytes(
+                            data=file_bytes,
+                            mime_type=file_mime
+                        )
+                        contents_payload = [file_part, base_prompt]
 
-            except Exception as e:
-                st.error(f"An error occurred during file reading: {e}")
-
-else:
-    st.info("💡 Please upload a file above to begin the analysis.")
+                    # Robust request runner with an automatic 3-pass retry for 503 limits
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            response = client.models.generate_content(
+                                model='gemini
