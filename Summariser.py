@@ -152,4 +152,24 @@ if uploaded_file is not None:
                     for attempt in range(max_retries):
                         try:
                             response = client.models.generate_content(
-                                model='gemini
+                                model='gemini-2.5-flash',
+                                contents=contents_payload
+                            )
+                            # If successful, render output styling and exit the retry cycle
+                            st.markdown("### 📊 AI Analysis Summary")
+                            st.markdown(f'<div class="insight-box">{response.text}</div>', unsafe_allow_html=True)
+                            break
+                            
+                        except Exception as e:
+                            if "503" in str(e) and attempt < max_retries - 1:
+                                st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying in 3 seconds...")
+                                time.sleep(3)
+                            else:
+                                st.error(f"An error occurred during AI processing: {e}")
+                                break
+
+                except Exception as e:
+                    st.error(f"An error occurred during file reading: {e}")
+
+else:
+    st.info("💡 Please upload a file above to begin the analysis.")
