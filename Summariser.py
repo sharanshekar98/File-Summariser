@@ -1,28 +1,14 @@
 import os
 import streamlit as st
-import streamlit.components.v1 as components
 import zipfile
 import xml.etree.ElementTree as ET
 import time
 from google import genai
 from google.genai import types
-from PIL import Image
-import io
-
-# PDF Preview support setup
-try:
-    from pdf2image import convert_from_bytes
-    PDF_PREVIEW_SUPPORTED = True
-except ImportError:
-    PDF_PREVIEW_SUPPORTED = False
-
-# Initialize Session State for app routing mode
-if "app_mode" not in st.session_state:
-    st.session_state.app_mode = None
 
 # 1. Page Configuration & Custom "Bright & Appealing" Styling
 st.set_page_config(
-    page_title="AI Insight Hub",
+    page_title="AI File Insight Studio",
     page_icon="✨",
     layout="centered"
 )
@@ -52,50 +38,23 @@ st.markdown("""
         border: 2px dashed #3b82f6;
     }
     
-    /* Standard structural buttons (Back, Selectors) */
-    div.stButton > button {
-        background: #ffffff;
-        color: #1e3a8a !important;
-        border: 1px solid #cbd5e1 !important;
-        padding: 10px 24px !important;
-        border-radius: 20px !important;
-        font-weight: 600 !important;
-        transition: all 0.2s ease;
-    }
-    div.stButton > button:hover {
-        background: #f8fafc !important;
-        border-color: #94a3b8 !important;
-    }
-
-    /* Targeting specifically the action buttons with an HTML block fallback style */
-    .submit-trigger-btn div.stButton > button {
+    /* Bright, appealing Button Styling */
+    div.stButton > button:first-child {
         background: linear-gradient(45deg, #ff4e50, #f9d423) !important;
         color: white !important;
         border: none !important;
-        padding: 14px 30px !important;
+        padding: 12px 30px !important;
         font-weight: bold !important;
         font-size: 16px !important;
         border-radius: 25px !important;
         box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4) !important;
         transition: all 0.3s ease !important;
-        width: 100% !important;
-        display: block !important;
+        width: 100%;
     }
     
-    .submit-trigger-btn div.stButton > button:hover {
-        transform: translateY(-2px) !important;
+    div.stButton > button:first-child:hover {
+        transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 78, 80, 0.6) !important;
-    }
-    
-    /* Specific styling for the large selection buttons on landing page */
-    .landing-box {
-        background-color: white;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-        text-align: center;
-        margin-bottom: 20px;
-        border-top: 4px solid #3b82f6;
     }
     
     /* Response box styling */
@@ -107,45 +66,10 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.04);
         margin-top: 20px;
         color: #1f2937;
-        white-space: pre-wrap;
-    }
-    
-    /* Preview box framing */
-    .preview-container {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #e2e8f0;
-        margin-bottom: 20px;
-        text-align: center;
+        white-space: pre-wrap; /* Preserves markdown paragraph spacing */
     }
     </style>
 """, unsafe_allow_html=True)
-
-# 2. Floating "Go to Top" Button Component
-components.html(
-    """
-    <button onclick="scrollToTop()" id="scrollTopBtn" title="Go to top">▲</button>
-    <script>
-    var mybutton = document.getElementById("scrollTopBtn");
-    window.parent.onscroll = function() { scrollFunction() };
-    function scrollFunction() {
-        if (window.parent.pageYOffset > 300) { mybutton.style.display = "block"; } 
-        else { mybutton.style.display = "none"; }
-    }
-    function scrollToTop() { window.parent.scrollTo({ top: 0, behavior: 'smooth' }); }
-    </script>
-    <style>
-    #scrollTopBtn {
-        display: none; position: fixed; bottom: 30px; right: 30px; z-index: 99999; border: none; outline: none; 
-        background: linear-gradient(45deg, #ff4e50, #f9d423); color: white; cursor: pointer; padding: 15px; 
-        border-radius: 50%; font-size: 18px; font-weight: bold; box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4);
-        transition: all 0.3s ease; width: 50px; height: 50px;
-    }
-    #scrollTopBtn:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(255, 78, 80, 0.6); }
-    </style>
-    """, height=0,
-)
 
 # Helper function to extract text directly from a Word (.docx) file
 def extract_text_from_docx(file_io):
@@ -153,110 +77,107 @@ def extract_text_from_docx(file_io):
         with zipfile.ZipFile(file_io) as z:
             xml_content = z.read('word/document.xml')
             root = ET.fromstring(xml_content)
-            namespaces = {'w': 'http://openxmlformats.org'}
+            namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
             text_elements = root.findall('.//w:t', namespaces)
+            # Added space separation to prevent words from running together
             return " ".join([t.text for t in text_elements if t.text])
     except Exception as e:
         return f"Error extracting Word text: {str(e)}"
 
-# Helper function to handle content generation with 503 retries
-def call_gemini_with_retry(client, contents_payload):
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=contents_payload
-            )
-            return response.text
-        except Exception as e:
-            if "503" in str(e) and attempt < max_retries - 1:
-                st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying...")
-                time.sleep(3)
-            else:
-                st.error(f"AI Processing error: {e}")
-                return None
-
-# UI Header Layout
-st.title("✨ AI Insight Hub")
+# 3. UI Layout
+st.title("✨ AI File Insight Studio")
+st.markdown("Upload a document, image, or data file to instantly extract its key details and get a smart AI summary.")
+st.write("---")
 
 # 🔑 Dynamic Sidebar API Key Input
 with st.sidebar:
     st.header("🔑 Authentication")
     api_key_input = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
-    st.markdown("[Get a free key from Google AI Studio](https://google.com)")
+    st.markdown("[Get a free key from Google AI Studio](https://aistudio.google.com/)")
 
-# ==================== ROUTING LOGIC ====================
+# File Uploader Widget
+uploaded_file = st.file_uploader(
+    "Choose a file (PDF, TXT, Images, CSV, Word Documents, etc.)", 
+    type=["pdf", "txt", "csv", "png", "jpg", "jpeg", "docx"]
+)
 
-# SCREEN 1: LANDING SELECTION
-if st.session_state.app_mode is None:
-    st.markdown("### Select an AI Assistant Mode to get started:")
-    st.write("---")
+if uploaded_file is not None:
+    st.success(f"🎉 **File successfully uploaded!**")
+    
+    # Cache the file byte array directly into memory to avoid .read() pointer bugs
+    file_bytes_data = uploaded_file.getvalue()
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown('<div class="landing-box"><h3>📁 File Analyst</h3><p>Upload files, view previews, and extract structured summaries.</p></div>', unsafe_allow_html=True)
-        if st.button("Open File Analyst Studio", key="go_to_file"):
-            st.session_state.app_mode = "file_studio"
-            st.rerun()
-            
+        st.metric(label="File Name", value=uploaded_file.name)
     with col2:
-        st.markdown('<div class="landing-box"><h3>🔍 General Search</h3><p>Ask freeform questions or assign open-ended tasks directly.</p></div>', unsafe_allow_html=True)
-        if st.button("Open General AI Search", key="go_to_search"):
-            st.session_state.app_mode = "general_search"
-            st.rerun()
+        file_size_kb = round(len(file_bytes_data) / 1024, 2)
+        st.metric(label="File Size", value=f"{file_size_kb} KB")
 
-# SCREEN 2A: FILE STUDIO WORKSPACE
-elif st.session_state.app_mode == "file_studio":
-    if st.button("← Back to Mode Selection", key="back_from_file"):
-        st.session_state.app_mode = None
-        st.rerun()
-        
-    st.markdown("## 📁 File Insight Studio")
-    st.markdown("Upload a document, image, or data file to instantly preview it and get a smart AI summary.")
-    
-    uploaded_file = st.file_uploader(
-        "Choose a file", 
-        type=["pdf", "txt", "csv", "png", "jpg", "jpeg", "docx"],
-        key="file_uploader"
+    # Custom prompt input for targeted analysis
+    user_prompt = st.text_input(
+        "Is there anything specific you want the AI to look for?", 
+        placeholder="e.g., Summarize the top 3 takeaways, find action items, etc. (Leave blank for general summary)"
     )
 
-    if uploaded_file is not None:
-        st.success(f"🎉 **File successfully uploaded!**")
-        file_bytes_data = uploaded_file.getvalue()
-        
-        # --- PREVIEW AREA ---
-        st.markdown("### 👁️ File Preview")
-        with st.container():
-            st.markdown('<div class="preview-container">', unsafe_allow_html=True)
-            if uploaded_file.type.startswith("image/"):
-                image = Image.open(io.BytesIO(file_bytes_data))
-                st.image(image, caption="Uploaded Image Preview", use_container_width=True)
-            elif uploaded_file.name.endswith(".pdf"):
-                if PDF_PREVIEW_SUPPORTED:
-                    try:
-                        pages = convert_from_bytes(file_bytes_data, first_page=1, last_page=1)
-                        if pages: st.image(pages, caption="PDF Page 1 Preview", use_container_width=True)
-                    except Exception as e:
-                        st.info("💡 Could not render visual layout preview for this PDF.")
-                else:
-                    st.info("💡 PDF visual preview requires the `pdf2image` library package.")
-            elif uploaded_file.name.endswith((".txt", ".csv")):
+    # Action Button
+    if st.button("Generate AI Insights 🚀"):
+        # Check if the user entered an API key in the sidebar
+        if not api_key_input:
+            st.error("Please enter your Gemini API Key in the left sidebar first!")
+        else:
+            with st.spinner("Analyzing file content with Gemini... Please wait."):
                 try:
-                    text_preview = file_bytes_data[:1000].decode("utf-8")
-                    st.text_area("File Snippet Preview", text_preview, height=150, disabled=True)
-                except Exception:
-                    st.info("📝 Binary text data cannot be previewed directly.")
-            elif uploaded_file.name.endswith(".docx"):
-                docx_preview_text = extract_text_from_docx(io.BytesIO(file_bytes_data))
-                st.text_area("Document Text Preview", docx_preview_text[:1000], height=150, disabled=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+                    # Initialize client dynamically with the provided input key
+                    client = genai.Client(api_key=api_key_input)
 
-        col1, col2 = st.columns(2)
-        with col1: st.metric(label="File Name", value=uploaded_file.name)
-        with col2:
-            file_size_kb = round(len(file_bytes_data) / 1024, 2)
-            st.metric(label="File Size", value=f"{file_size_kb} KB")
+                    # Construct the prompt instructions
+                    base_prompt = "You are an expert data and document analyst. Carefully study the attached file details and content. Provide a comprehensive summary, including key themes, important details, and a structural overview."
+                    if user_prompt:
+                        base_prompt += f"\n\nUser specific request: {user_prompt}"
 
-        # --- ASK AI TEXT INPUT ---
-        user_prompt = st.text_input("Is there anything specific you want the AI to look for?",placeholder="e.g., Describe this file, look for action items, find dates...",key="file_prompt")# Isolated styled container wrapper for the generate buttonst.markdown('', unsafe_allow_html=True)submit_file_analysis = st.button("Generate AI Insights 🚀", key="file_btn")st.markdown('', unsafe_allow_html=True)if submit_file_analysis:if not api_key_input:st.error("Please enter your Gemini API Key in the left sidebar first!")else:with st.spinner("Analyzing file content with Gemini... Please wait."):client = genai.Client(api_key=api_key_input)base_prompt = "You are an expert data and document analyst. Study the file content and provide a comprehensive summary."if user_prompt:base_prompt += f"\n\nUser specific request: {user_prompt}"if uploaded_file.name.endswith('.docx'):docx_text = extract_text_from_docx(io.BytesIO(file_bytes_data))contents_payload = [f"Content:\n\n{docx_text}", base_prompt]else:file_part = types.Part.from_bytes(data=file_bytes_data, mime_type=uploaded_file.type)contents_payload = [file_part, base_prompt]response_text = call_gemini_with_retry(client, contents_payload)if response_text:st.markdown("### 📊 AI Analysis Summary")st.markdown(f'{response_text}', unsafe_allow_html=True)else:st.info("💡 Please upload a file above to begin.")SCREEN 2B: SEARCH WORKSPACEelif st.session_state.app_mode == "general_search":if st.button("← Back to Mode Selection", key="back_from_search"):st.session_state.app_mode = Nonest.rerun()st.markdown("## 🔍 General AI Search")st.markdown("Ask Gemini questions or assign general processing tasks directly without uploading local media assets.")search_query = st.text_area("What are you looking for today?",placeholder="e.g., Write a python script for calculating fibonacci sequences, or summarize the rules of quantum physics.",height=100,key="search_query")st.markdown('', unsafe_allow_html=True)submit_search = st.button("Search with AI 🔍", key="search_btn")st.markdown('', unsafe_allow_html=True)if submit_search:if not api_key_input:st.error("Please enter your Gemini API Key in the left sidebar first!")elif not search_query.strip():st.warning("Please type a question or task query first!")else:with st.spinner("Thinking..."):client = genai.Client(api_key=api_key_input)response_text = call_gemini_with_retry(client, [search_query])if response_text:st.markdown("### 💡 AI System Response")st.markdown(f'{response_text}', unsafe_allow_html=True)
+                    # ROUTING BY FILE TYPE
+                    if uploaded_file.name.endswith('.docx'):
+                        docx_text = extract_text_from_docx(uploaded_file)
+                        contents_payload = [
+                            f"Document Content from Word File ({uploaded_file.name}):\n\n{docx_text}",
+                            base_prompt
+                        ]
+                    else:
+                        file_part = types.Part.from_bytes(
+                            data=file_bytes_data, # Use the safe memory-cached byte array
+                            mime_type=uploaded_file.type
+                        )
+                        contents_payload = [file_part, base_prompt]
+
+                    # Robust request runner with an automatic 3-pass retry for 503 limits
+                    max_retries = 3
+                    response_text = None
+                    
+                    for attempt in range(max_retries):
+                        try:
+                            response = client.models.generate_content(
+                                model='gemini-2.5-flash',
+                                contents=contents_payload
+                            )
+                            response_text = response.text
+                            break # Break retry loop if successful
+                            
+                        except Exception as e:
+                            if "503" in str(e) and attempt < max_retries - 1:
+                                st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying in 3 seconds...")
+                                time.sleep(3)
+                            else:
+                                st.error(f"An error occurred during AI processing: {e}")
+                                break
+
+                    # Render output block safely outside the try loop structure
+                    if response_text:
+                        st.markdown("### 📊 AI Analysis Summary")
+                        st.markdown(f'<div class="insight-box">{response_text}</div>', unsafe_allow_html=True)
+
+                except Exception as e:
+                    st.error(f"An error occurred during file reading: {e}")
+
+else:
+    st.info("💡 Please upload a file above to begin the analysis.")
