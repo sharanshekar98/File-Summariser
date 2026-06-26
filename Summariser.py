@@ -52,8 +52,8 @@ st.markdown("""
         border: 2px dashed #3b82f6;
     }
     
-    /* Bright, appealing Action Button Styling */
-    div.stButton > button {
+    /* Bright, appealing Action Button Styling for both normal buttons and form submits */
+    div.stButton > button, div.stFormSubmitButton > button {
         background: linear-gradient(45deg, #ff4e50, #f9d423) !important;
         color: white !important;
         border: none !important;
@@ -63,12 +63,13 @@ st.markdown("""
         border-radius: 25px !important;
         box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4) !important;
         transition: all 0.3s ease !important;
-        width: 100%;
-        margin-top: 10px;
-        margin-bottom: 10px;
+        width: 100% !important;
+        margin-top: 15px !important;
+        margin-bottom: 15px !important;
+        display: block !important;
     }
     
-    div.stButton > button:hover {
+    div.stButton > button:hover, div.stFormSubmitButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 78, 80, 0.6) !important;
     }
@@ -278,10 +279,4 @@ elif st.session_state.app_mode == "file_studio":
             file_size_kb = round(len(file_bytes_data) / 1024, 2)
             st.metric(label="File Size", value=f"{file_size_kb} KB")
 
-        user_prompt = st.text_input(
-            "Is there anything specific you want the AI to look for?", 
-            placeholder="e.g., Summarize the top 3 takeaways...",
-            key="file_prompt"
-        )
-
-        # Action button rendered explicitly at the file level context block
+        # Isolated Form container to lock text field and submit button together structurally
