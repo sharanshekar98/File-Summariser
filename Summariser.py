@@ -281,3 +281,6 @@ elif st.session_state.app_mode == "file_studio":
             placeholder="e.g., Summarize the top 3 takeaways...",
             key="file_prompt"
         )
+
+        if st.button("Generate AI Insights 🚀", key="file_btn"):
+            if not api_key_input:
