@@ -29,13 +29,40 @@ st.markdown("""
         text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
     }
     
-    /* Card/Container styling for file uploader and results */
-    .stFileUploader {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-        border: 2px dashed #3b82f6;
+    /* Bright & Appealing File Uploader Card */
+    [data-testid="stFileUploader"] {
+        background-color: #ffffff !important;
+        padding: 25px !important;
+        border-radius: 16px !important;
+        box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15) !important;
+        border: 3px dashed #3b82f6 !important;
+        transition: all 0.3s ease !important;
+    }
+    [data-testid="stFileUploader"]:hover {
+        border-color: #2563eb !important;
+        box-shadow: 0 10px 35px rgba(59, 130, 246, 0.25) !important;
+    }
+    
+    /* Bright & Appealing Text Area Search Input */
+    div[data-testid="stTextArea"] textarea {
+        background-color: #ffffff !important;
+        color: #1f2937 !important;
+        border: 2.5px solid #10b981 !important; /* Bright Emerald Green Border */
+        border-radius: 14px !important;
+        padding: 15px !important;
+        font-size: 15px !important;
+        box-shadow: 0 8px 20px rgba(16, 185, 129, 0.1) !important;
+        transition: all 0.3s ease !important;
+    }
+    div[data-testid="stTextArea"] textarea:focus {
+        border-color: #059669 !important;
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25) !important;
+    }
+    /* Style label for the search area */
+    div[data-testid="stTextArea"] label p {
+        color: #065f46 !important;
+        font-weight: 700 !important;
+        font-size: 16px !important;
     }
     
     /* Bright, appealing Button Styling */
@@ -50,6 +77,7 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4) !important;
         transition: all 0.3s ease !important;
         width: 100%;
+        margin-top: 10px;
     }
     
     div.stButton > button:first-child:hover {
@@ -66,7 +94,7 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.04);
         margin-top: 20px;
         color: #1f2937;
-        white-space: pre-wrap; /* Preserves markdown paragraph spacing */
+        white-space: pre-wrap;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -77,7 +105,7 @@ def extract_text_from_docx(file_io):
         with zipfile.ZipFile(file_io) as z:
             xml_content = z.read('word/document.xml')
             root = ET.fromstring(xml_content)
-            namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            namespaces = {'w': 'http://openxmlformats.org'}
             text_elements = root.findall('.//w:t', namespaces)
             return " ".join([t.text for t in text_elements if t.text])
     except Exception as e:
@@ -92,20 +120,22 @@ st.write("---")
 with st.sidebar:
     st.header("🔑 Authentication")
     api_key_input = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
-    st.markdown("[Get a free key from Google AI Studio](https://aistudio.google.com/)")
+    st.markdown("[Get a free key from Google AI Studio](https://google.com)")
 
 # --- Interactive Input Section ---
-# File Uploader Widget
+# Bright File Uploader Container
 uploaded_file = st.file_uploader(
     "Choose a file (PDF, TXT, Images, CSV, Word Documents, etc.)", 
     type=["pdf", "txt", "csv", "png", "jpg", "jpeg", "docx"]
 )
 
-# Text Search Area Widget
+st.write("") # Extra spacing spacer
+
+# Bright Text Search Container
 text_query = st.text_area(
     "🔍 Search or Ask AI with Text",
     placeholder="Ask a question, paste text to summarize, or specify what to find in your uploaded file...",
-    height=100
+    height=110
 )
 
 # Track if we have any usable input to trigger the button
