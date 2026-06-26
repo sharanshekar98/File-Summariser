@@ -79,14 +79,13 @@ def extract_text_from_docx(file_io):
             root = ET.fromstring(xml_content)
             namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
             text_elements = root.findall('.//w:t', namespaces)
-            # Added space separation to prevent words from running together
             return " ".join([t.text for t in text_elements if t.text])
     except Exception as e:
         return f"Error extracting Word text: {str(e)}"
 
 # 3. UI Layout
 st.title("✨ AI File Insight Studio")
-st.markdown("Upload a document, image, or data file to instantly extract its key details and get a smart AI summary.")
+st.markdown("Upload a document or ask a text question to instantly get smart AI summaries and insights.")
 st.write("---")
 
 # 🔑 Dynamic Sidebar API Key Input
@@ -95,16 +94,25 @@ with st.sidebar:
     api_key_input = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
     st.markdown("[Get a free key from Google AI Studio](https://aistudio.google.com/)")
 
+# --- Interactive Input Section ---
 # File Uploader Widget
 uploaded_file = st.file_uploader(
     "Choose a file (PDF, TXT, Images, CSV, Word Documents, etc.)", 
     type=["pdf", "txt", "csv", "png", "jpg", "jpeg", "docx"]
 )
 
+# Text Search Area Widget
+text_query = st.text_area(
+    "🔍 Search or Ask AI with Text",
+    placeholder="Ask a question, paste text to summarize, or specify what to find in your uploaded file...",
+    height=100
+)
+
+# Track if we have any usable input to trigger the button
+has_input = uploaded_file is not None or text_query.strip() != ""
+
 if uploaded_file is not None:
     st.success(f"🎉 **File successfully uploaded!**")
-    
-    # Cache the file byte array directly into memory to avoid .read() pointer bugs
     file_bytes_data = uploaded_file.getvalue()
     
     col1, col2 = st.columns(2)
@@ -114,70 +122,67 @@ if uploaded_file is not None:
         file_size_kb = round(len(file_bytes_data) / 1024, 2)
         st.metric(label="File Size", value=f"{file_size_kb} KB")
 
-    # Custom prompt input for targeted analysis
-    user_prompt = st.text_input(
-        "Is there anything specific you want the AI to look for?", 
-        placeholder="e.g., Summarize the top 3 takeaways, find action items, etc. (Leave blank for general summary)"
-    )
+# Action Button
+if st.button("Generate AI Insights 🚀", disabled=not has_input):
+    if not api_key_input:
+        st.error("Please enter your Gemini API Key in the left sidebar first!")
+    else:
+        with st.spinner("Analyzing with Gemini... Please wait."):
+            try:
+                client = genai.Client(api_key=api_key_input)
+                contents_payload = []
 
-    # Action Button
-    if st.button("Generate AI Insights 🚀"):
-        # Check if the user entered an API key in the sidebar
-        if not api_key_input:
-            st.error("Please enter your Gemini API Key in the left sidebar first!")
-        else:
-            with st.spinner("Analyzing file content with Gemini... Please wait."):
-                try:
-                    # Initialize client dynamically with the provided input key
-                    client = genai.Client(api_key=api_key_input)
-
-                    # Construct the prompt instructions
+                # Build system instructions depending on what inputs are available
+                if uploaded_file is not None and text_query.strip() != "":
+                    base_prompt = f"You are an expert analyst. Answer the user's specific request using the provided file.\n\nUser request: {text_query}"
+                elif uploaded_file is not None:
                     base_prompt = "You are an expert data and document analyst. Carefully study the attached file details and content. Provide a comprehensive summary, including key themes, important details, and a structural overview."
-                    if user_prompt:
-                        base_prompt += f"\n\nUser specific request: {user_prompt}"
+                else:
+                    base_prompt = f"You are a helpful AI assistant. Respond to the following text query:\n\n{text_query}"
 
-                    # ROUTING BY FILE TYPE
+                # Handle file attachments if a file exists
+                if uploaded_file is not None:
                     if uploaded_file.name.endswith('.docx'):
                         docx_text = extract_text_from_docx(uploaded_file)
-                        contents_payload = [
-                            f"Document Content from Word File ({uploaded_file.name}):\n\n{docx_text}",
-                            base_prompt
-                        ]
+                        contents_payload.append(f"Document Content from Word File ({uploaded_file.name}):\n\n{docx_text}")
                     else:
                         file_part = types.Part.from_bytes(
-                            data=file_bytes_data, # Use the safe memory-cached byte array
+                            data=file_bytes_data,
                             mime_type=uploaded_file.type
                         )
-                        contents_payload = [file_part, base_prompt]
+                        contents_payload.append(file_part)
 
-                    # Robust request runner with an automatic 3-pass retry for 503 limits
-                    max_retries = 3
-                    response_text = None
-                    
-                    for attempt in range(max_retries):
-                        try:
-                            response = client.models.generate_content(
-                                model='gemini-2.5-flash',
-                                contents=contents_payload
-                            )
-                            response_text = response.text
-                            break # Break retry loop if successful
-                            
-                        except Exception as e:
-                            if "503" in str(e) and attempt < max_retries - 1:
-                                st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying in 3 seconds...")
-                                time.sleep(3)
-                            else:
-                                st.error(f"An error occurred during AI processing: {e}")
-                                break
+                # Append the instructions to the text payload
+                contents_payload.append(base_prompt)
 
-                    # Render output block safely outside the try loop structure
-                    if response_text:
-                        st.markdown("### 📊 AI Analysis Summary")
-                        st.markdown(f'<div class="insight-box">{response_text}</div>', unsafe_allow_html=True)
+                # Robust request runner with an automatic 3-pass retry for 503 limits
+                max_retries = 3
+                response_text = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=contents_payload
+                        )
+                        response_text = response.text
+                        break
+                        
+                    except Exception as e:
+                        if "503" in str(e) and attempt < max_retries - 1:
+                            st.warning(f"⚠️ Google's servers are busy (Attempt {attempt + 1}/{max_retries}). Retrying in 3 seconds...")
+                            time.sleep(3)
+                        else:
+                            st.error(f"An error occurred during AI processing: {e}")
+                            break
 
-                except Exception as e:
-                    st.error(f"An error occurred during file reading: {e}")
+                if response_text:
+                    st.markdown("### 📊 AI Analysis Summary")
+                    st.markdown(f'<div class="insight-box">{response_text}</div>', unsafe_allow_html=True)
 
-else:
-    st.info("💡 Please upload a file above to begin the analysis.")
+            except Exception as e:
+                st.error(f"An error occurred during file reading: {e}")
+
+# Info message shown if no input is present
+if not has_input:
+    st.info("💡 Please upload a file or type a text query above to begin.")
