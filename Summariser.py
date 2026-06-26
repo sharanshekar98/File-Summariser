@@ -64,6 +64,8 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4) !important;
         transition: all 0.3s ease !important;
         width: 100%;
+        margin-top: 10px;
+        margin-bottom: 10px;
     }
     
     div.stButton > button:hover {
@@ -282,5 +284,4 @@ elif st.session_state.app_mode == "file_studio":
             key="file_prompt"
         )
 
-        if st.button("Generate AI Insights 🚀", key="file_btn"):
-            if not api_key_input:
+        # Action button rendered explicitly at the file level context block
