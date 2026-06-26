@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import streamlit.components.v1 as components
 import zipfile
 import xml.etree.ElementTree as ET
 import time
@@ -8,12 +9,16 @@ from google.genai import types
 from PIL import Image
 import io
 
-# PDF Preview support
+# PDF Preview support setup
 try:
     from pdf2image import convert_from_bytes
     PDF_PREVIEW_SUPPORTED = True
 except ImportError:
     PDF_PREVIEW_SUPPORTED = False
+
+# Initialize Session State for app routing mode
+if "app_mode" not in st.session_state:
+    st.session_state.app_mode = None
 
 # 1. Page Configuration & Custom "Bright & Appealing" Styling
 st.set_page_config(
@@ -47,8 +52,8 @@ st.markdown("""
         border: 2px dashed #3b82f6;
     }
     
-    /* Bright, appealing Button Styling */
-    div.stButton > button:first-child {
+    /* Bright, appealing Action Button Styling */
+    div.stButton > button {
         background: linear-gradient(45deg, #ff4e50, #f9d423) !important;
         color: white !important;
         border: none !important;
@@ -61,9 +66,20 @@ st.markdown("""
         width: 100%;
     }
     
-    div.stButton > button:first-child:hover {
+    div.stButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 78, 80, 0.6) !important;
+    }
+    
+    /* Specific styling for the large selection buttons on landing page */
+    .landing-box {
+        background-color: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        text-align: center;
+        margin-bottom: 20px;
+        border-top: 4px solid #3b82f6;
     }
     
     /* Response box styling */
@@ -89,6 +105,56 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# 2. Floating "Go to Top" Button Component (HTML + JS + CSS)
+components.html(
+    """
+    <button onclick="scrollToTop()" id="scrollTopBtn" title="Go to top">▲</button>
+    
+    <script>
+    var mybutton = document.getElementById("scrollTopBtn");
+    window.parent.onscroll = function() { scrollFunction() };
+    function scrollFunction() {
+        if (window.parent.pageYOffset > 300) {
+            mybutton.style.display = "block";
+        } else {
+            mybutton.style.display = "none";
+        }
+    }
+    function scrollToTop() {
+        window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    </script>
+    
+    <style>
+    #scrollTopBtn {
+        display: none; 
+        position: fixed; 
+        bottom: 30px; 
+        right: 30px; 
+        z-index: 99999; 
+        border: none; 
+        outline: none; 
+        background: linear-gradient(45deg, #ff4e50, #f9d423); 
+        color: white; 
+        cursor: pointer; 
+        padding: 15px; 
+        border-radius: 50%; 
+        font-size: 18px; 
+        font-weight: bold;
+        box-shadow: 0 4px 15px rgba(255, 78, 80, 0.4);
+        transition: all 0.3s ease;
+        width: 50px;
+        height: 50px;
+    }
+    #scrollTopBtn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(255, 78, 80, 0.6);
+    }
+    </style>
+    """,
+    height=0,
+)
 
 # Helper function to extract text directly from a Word (.docx) file
 def extract_text_from_docx(file_io):
@@ -120,7 +186,7 @@ def call_gemini_with_retry(client, contents_payload):
                 st.error(f"AI Processing error: {e}")
                 return None
 
-# UI Layout
+# UI Header Layout
 st.title("✨ AI Insight Hub")
 
 # 🔑 Dynamic Sidebar API Key Input
@@ -129,11 +195,34 @@ with st.sidebar:
     api_key_input = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
     st.markdown("[Get a free key from Google AI Studio](https://google.com)")
 
-# Tabs for separate operational modes
-tab1, tab2 = st.tabs(["📁 File Insight Studio", "🔍 General AI Search"])
+# ==================== ROUTING LOGIC ====================
 
-# ==================== TAB 1: FILE INSIGHT STUDIO ====================
-with tab1:
+# SCREEN 1: LANDING SELECTION
+if st.session_state.app_mode is None:
+    st.markdown("### Select an AI Assistant Mode to get started:")
+    st.write("---")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown('<div class="landing-box"><h3>📁 File Analyst</h3><p>Upload files, view previews, and extract structured summaries.</p></div>', unsafe_allow_html=True)
+        if st.button("Open File Analyst Studio", key="go_to_file"):
+            st.session_state.app_mode = "file_studio"
+            st.rerun()
+            
+    with col2:
+        st.markdown('<div class="landing-box"><h3>🔍 General Search</h3><p>Ask freeform questions or assign open-ended tasks directly.</p></div>', unsafe_allow_html=True)
+        if st.button("Open General AI Search", key="go_to_search"):
+            st.session_state.app_mode = "general_search"
+            st.rerun()
+
+# SCREEN 2A: FILE STUDIO WORKSPACE
+elif st.session_state.app_mode == "file_studio":
+    if st.button("← Back to Mode Selection", key="back_from_file"):
+        st.session_state.app_mode = None
+        st.rerun()
+        
+    st.markdown("## 📁 File Insight Studio")
     st.markdown("Upload a document, image, or data file to instantly preview it and get a smart AI summary.")
     
     uploaded_file = st.file_uploader(
@@ -146,29 +235,26 @@ with tab1:
         st.success(f"🎉 **File successfully uploaded!**")
         file_bytes_data = uploaded_file.getvalue()
         
-        # --- PREVIEW AREA GENERATION ---
+        # --- PREVIEW AREA ---
         st.markdown("### 👁️ File Preview")
         with st.container():
             st.markdown('<div class="preview-container">', unsafe_allow_html=True)
             
-            # Image Previews
             if uploaded_file.type.startswith("image/"):
                 image = Image.open(io.BytesIO(file_bytes_data))
                 st.image(image, caption="Uploaded Image Preview", use_container_width=True)
             
-            # PDF Previews (First page conversion)
             elif uploaded_file.name.endswith(".pdf"):
                 if PDF_PREVIEW_SUPPORTED:
                     try:
                         pages = convert_from_bytes(file_bytes_data, first_page=1, last_page=1)
                         if pages:
-                            st.image(pages[0], caption="PDF Page 1 Preview", use_container_width=True)
+                            st.image(pages, caption="PDF Page 1 Preview", use_container_width=True)
                     except Exception as e:
                         st.info("💡 Could not render visual layout preview for this PDF.")
                 else:
                     st.info("💡 PDF visual preview requires the `pdf2image` library package.")
             
-            # Text / Data Previews
             elif uploaded_file.name.endswith((".txt", ".csv")):
                 try:
                     text_preview = file_bytes_data[:1000].decode("utf-8")
@@ -176,7 +262,6 @@ with tab1:
                 except Exception:
                     st.info("📝 Binary text data cannot be previewed directly.")
             
-            # Word Previews
             elif uploaded_file.name.endswith(".docx"):
                 docx_preview_text = extract_text_from_docx(io.BytesIO(file_bytes_data))
                 st.text_area("Document Text Preview", docx_preview_text[:1000], height=150, disabled=True)
@@ -199,52 +284,3 @@ with tab1:
 
         if st.button("Generate AI Insights 🚀", key="file_btn"):
             if not api_key_input:
-                st.error("Please enter your Gemini API Key in the left sidebar first!")
-            else:
-                with st.spinner("Analyzing file structure..."):
-                    client = genai.Client(api_key=api_key_input)
-                    base_prompt = "You are an expert data and document analyst. Study the file content and provide a comprehensive summary."
-                    if user_prompt:
-                        base_prompt += f"\n\nUser specific request: {user_prompt}"
-
-                    if uploaded_file.name.endswith('.docx'):
-                        docx_text = extract_text_from_docx(io.BytesIO(file_bytes_data))
-                        contents_payload = [f"Content:\n\n{docx_text}", base_prompt]
-                    else:
-                        file_part = types.Part.from_bytes(data=file_bytes_data, mime_type=uploaded_file.type)
-                        contents_payload = [file_part, base_prompt]
-
-                    response_text = call_gemini_with_retry(client, contents_payload)
-                    if response_text:
-                        st.markdown("### 📊 AI Analysis Summary")
-                        st.markdown(f'<div class="insight-box">{response_text}</div>', unsafe_allow_html=True)
-    else:
-        st.info("💡 Please upload a file above to begin.")
-
-# ==================== TAB 2: GENERAL AI SEARCH ====================
-with tab2:
-    st.markdown("Ask Gemini questions or assign general processing tasks directly without uploading local media assets.")
-    
-    # Text search input field
-    search_query = st.text_area(
-        "What are you looking for today?",
-        placeholder="e.g., Write a python script for calculating fibonacci sequences, or summarize the rules of quantum physics.",
-        height=100,
-        key="search_query"
-    )
-    
-    if st.button("Search with AI 🔍", key="search_btn"):
-        if not api_key_input:
-            st.error("Please enter your Gemini API Key in the left sidebar first!")
-        elif not search_query.strip():
-            st.warning("Please type a question or task query first!")
-        else:
-            with st.spinner("Thinking..."):
-                client = genai.Client(api_key=api_key_input)
-                
-                # Simple prompt pass-through for conversational text inquiries
-                response_text = call_gemini_with_retry(client, [search_query])
-                
-                if response_text:
-                    st.markdown("### 💡 AI System Response")
-                    st.markdown(f'<div class="insight-box">{response_text}</div>', unsafe_allow_html=True)
