@@ -282,4 +282,4 @@ elif st.session_state.app_mode == "file_studio":
             key="file_prompt"
         )
 if st.button("Generate AI Insights 🚀", key="file_btn"):
-if not api_key_input:
+    if not api_key_input:
